@@ -1,0 +1,82 @@
+#!/usr/bin/env python
+# Python libs
+import sys, time
+
+# numpy and scipy
+import numpy as np
+from scipy.ndimage import filters
+from collections import deque
+from imutils.video import VideoStream
+import argparse
+import cv2
+import imutils
+import time
+
+# Ros libraries
+import roslib
+import rospy
+from std_msgs.msg import Int64
+# Ros Messages
+from sensor_msgs.msg import CompressedImage
+from geometry_msgs.msg import Twist
+from geometry_msgs.msg import Point
+values = None
+#class drive_wheels_try():
+def callback(Point):
+	print('X value of ball: %s', Point.x) 
+	global values
+	values = Point.x
+
+#def __init__(self):
+def init():
+	rospy.init_node('drive_wheel_try', anonymous=True)
+	img_sub = rospy.Subscriber("/ball_pos",Point,callback,queue_size=1)
+	global pub	
+	pub = rospy.Publisher("/cmd_vel", Twist, queue_size=1)	
+	rate = rospy.Rate(10)	
+
+def do_stuff():
+	print(values)	
+
+	vel_msg = Twist()	
+	vel_msg.linear.x=0
+	vel_msg.linear.y=0
+	vel_msg.linear.z=0
+	vel_msg.angular.x = 0
+	vel_msg.angular.y = 0
+	vel_msg.angular.z = 0	
+	
+	while not rospy.is_shutdown():
+		print(values)
+		if values == -1:
+			vel_msg.angular.z = 0
+			pub.publish(vel_msg)
+
+		elif values is not None:
+			x = values - 160
+			z_vel = 0
+			if 160 > x > 0:
+				z_vel = -0.1
+			elif -160 < x < 0:
+				z_vel = 0.1
+			else:
+				z_vel = 0
+				#print("Ball center coordinates: %", self.values)
+			#print("Z velocity: %s", z_vel)
+	
+			vel_msg.angular.z = z_vel
+			pub.publish(vel_msg)
+			print vel_msg.angular.z
+	  		#rate.sleep()
+	#self.do_stuff()
+  	
+
+if __name__ == "__main__":
+    try:
+	init()
+	#dw = drive_wheels_try()
+	#dw.do_stuff()
+    except KeyboardInterrupt:
+	print "closing everything in drive_wheels_try"
+do_stuff()
+

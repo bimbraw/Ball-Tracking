@@ -1,0 +1,128 @@
+#!/usr/bin/env python
+# Python libs
+import sys, time
+
+# numpy and scipy
+import numpy as np
+from scipy.ndimage import filters
+from collections import deque
+from imutils.video import VideoStream
+import argparse
+import cv2
+import imutils
+import time
+
+# Ros libraries
+import roslib
+import rospy
+from std_msgs.msg import Int32
+# Ros Messages
+from sensor_msgs.msg import CompressedImage
+from geometry_msgs.msg import Point
+
+# construct the argument parse and parse the arguments
+ap = argparse.ArgumentParser()
+ap.add_argument("-b", "--buffer", type=int, default=64,
+	help="max buffer size")
+args = vars(ap.parse_args())
+
+# define the lower and upper boundaries of the yellow frisbee
+# in the HSV color space, then initialize the
+# list of tracked points
+yellowLower = (20, 50, 50)
+yellowUpper = (40, 255, 255)
+pts = deque(maxlen=args["buffer"])
+
+
+class find_ball_try:
+    def callback(self, CompressedImage):
+        
+	print 'received image of type: "%s"' % CompressedImage.format
+
+        #### direct conversion to CV2 ####
+        image_arr = np.fromstring(CompressedImage.data, np.uint8)
+        img_sub = cv2.imdecode(image_arr, cv2.IMREAD_COLOR)
+	
+	cv2.imshow('cv_img', img_sub)
+	cv2.waitKey(2)	
+
+	# changing to grayscale
+	#gray = cv2.cvtcolor(img_sub, cv2.COLOR_BGR2GRAY)
+	 
+	# resizing and blurring the frame and converting it to HSV color space
+	blurred = cv2.GaussianBlur(img_sub, (11, 11), 0)
+	hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
+	
+	# constructing a mask for the yellow, then performing dilations and erosions to remove blobs left in the mask
+	mask = cv2.inRange(hsv, yellowLower, yellowUpper)
+	mask = cv2.erode(mask, None, iterations=2)
+	mask = cv2.dilate(mask, None, iterations=2)
+
+	# finding contours in the mask and initialize the (x, y) center of the ball
+	cnts = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+	cnts = cnts[0] if imutils.is_cv2() else cnts[1]
+	center = None
+	
+	center_point = Point()
+
+	# only proceeding if at least one contour was found
+	if len(cnts) is not None:
+		# finding the largest contour in the mask, then using it to compute the minimum enclosing circle and centroid
+		cntrr = max(cnts, key=cv2.contourArea)
+		((x, y), radius) = cv2.minEnclosingCircle(cntrr)
+		M = cv2.moments(cntrr)
+		center = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
+		font = cv2.FONT_HERSHEY_SCRIPT_SIMPLEX
+		center_point.x = int(center[0])
+		center_point.y = int(center[1])
+		center_point.z = 0
+			
+		# displaying text on the center marker
+		#cv2.putText(frame,'center',center,font,1,(50,50,50),2,cv2.LINE_AA)
+		
+		print center
+
+		# only proceed if the radius meets a minimum size, changed to 10 for far away cases
+		if radius > 20:
+			# drawing the circle and centroid on the frame
+			cv2.circle(img_sub, (int(x), int(y)), int(radius),
+				(0, 255, 255), 2)
+			cv2.circle(img_sub, center, 5, (0, 0, 255), -1)
+		
+		rate = rospy.Rate(5)
+		self.pub.publish(center_point)
+		rate.sleep()
+	
+	elif len(cnts) is None:
+		center_point.x = 0
+		center_point.y = 0
+		center_point.z = 0
+		
+		rate = rospy.Rate(5)
+		self.pub.publish(center_point)
+		rate.sleep()	
+
+	# updating the points queue
+	pts.appendleft(center)
+
+	# showing the frame to our screen
+	cv2.imshow("Frame", img_sub)
+	key = cv2.waitKey(1) & 0xFF
+    
+    def __init__(self):
+	self.sub = rospy.Subscriber("/raspicam_node/image/compressed", CompressedImage, self.callback, queue_size=1)
+	self.pub = rospy.Publisher('/ball_pos', Point, queue_size = 5)
+
+def main(args):
+    '''Initializes and cleanup ros node'''
+    ic = find_ball_try()
+    rospy.init_node('find_ball_try', anonymous=True)
+    try:
+        rospy.spin()
+    except KeyboardInterrupt:
+        print "Shutting down ROS Image feature detector module"
+    cv2.destroyAllWindows()
+
+if __name__ == '__main__':
+    main(sys.argv)
+
