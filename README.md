@@ -1,4 +1,4 @@
-# Ball_Tracking
+# Ball Tracking
 Using Raspberry Pi based robot and raspicam to find center of a ball and track it (robot rotates based on where it finds the ball to be in the frame of the camera input)
 
 In this project, I created a ROS package containing two communicating nodes that enable a raspberry pi based robot
